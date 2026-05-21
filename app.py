@@ -67,6 +67,7 @@ app.add_middleware(
 
 providers: dict[str, Provider] = {}
 models: dict[str, ModelConfig] = {}
+MAX_ERROR_DETAIL_LENGTH = 500
 
 
 def _new_id(prefix: str) -> str:
@@ -322,7 +323,7 @@ def gateway_chat_completions(payload: GatewayRequest) -> GatewayResult:
             return GatewayResult(selected_model_id=model_id, attempts=attempts, response=response)
         except httpx.HTTPStatusError as exc:
             detail = exc.response.text
-            trimmed_detail = detail[:500]
+            trimmed_detail = detail[:MAX_ERROR_DETAIL_LENGTH]
             attempts.append(
                 GatewayAttempt(
                     model_id=model_id,
