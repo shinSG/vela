@@ -322,18 +322,19 @@ def gateway_chat_completions(payload: GatewayRequest) -> GatewayResult:
             return GatewayResult(selected_model_id=model_id, attempts=attempts, response=response)
         except httpx.HTTPStatusError as exc:
             detail = exc.response.text
+            trimmed_detail = detail[:500]
             attempts.append(
                 GatewayAttempt(
                     model_id=model_id,
                     provider_id=model.provider_id,
                     success=False,
-                    reason=f"HTTP {exc.response.status_code}: {detail[:200]}",
+                    reason=f"HTTP {exc.response.status_code}: {trimmed_detail}",
                 )
             )
             if _is_switchable_failure(exc.response.status_code, detail, None):
                 last_error = attempts[-1].reason
                 continue
-            raise HTTPException(status_code=exc.response.status_code, detail=detail[:500]) from exc
+            raise HTTPException(status_code=exc.response.status_code, detail=trimmed_detail) from exc
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
             attempts.append(
                 GatewayAttempt(
