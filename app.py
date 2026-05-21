@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+import re
 from typing import Any, Literal
 
 import httpx
@@ -199,7 +200,7 @@ def _is_switchable_failure(status_code: int | None, response_text: str | None, e
         return True
     if status_code in {408, 429, 500, 502, 503, 504}:
         return True
-    if response_text and "tpm" in response_text.lower():
+    if response_text and re.search(r"\b(tpm|tokens per minute|rate limit)\b", response_text.lower()):
         return True
     return False
 
@@ -348,7 +349,7 @@ def gateway_chat_completions(payload: GatewayRequest) -> GatewayResult:
             last_error = attempts[-1].reason
             continue
 
-    raise HTTPException(status_code=503, detail={"message": "All candidate models failed", "attempts": [a.model_dump() for a in attempts], "last_error": last_error})
+    raise HTTPException(status_code=503, detail=f"All candidate models failed. Last error: {last_error}")
 
 
 @app.get("/")
