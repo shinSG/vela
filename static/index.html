@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vela LLM Router</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; background: #f8fafc; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
+      input, select, textarea, button { width: 100%; margin: 6px 0; padding: 8px; box-sizing: border-box; }
+      button { background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+      pre { background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px; overflow: auto; }
+      ul { padding-left: 20px; }
+    </style>
+  </head>
+  <body>
+    <h1>Vela LLM 路由网关</h1>
+    <div class="grid">
+      <section class="card">
+        <h2>供应商管理</h2>
+        <input id="providerName" placeholder="name" />
+        <input id="providerUrl" placeholder="https://api.openai.com/v1 或 https://api.anthropic.com/v1" />
+        <input id="providerKey" placeholder="api key" />
+        <select id="providerProtocol">
+          <option value="openai">openai</option>
+          <option value="anthropic">anthropic</option>
+        </select>
+        <button onclick="createProvider()">新增供应商</button>
+        <ul id="providerList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>模型管理</h2>
+        <input id="modelName" placeholder="显示名称" />
+        <input id="upstreamModel" placeholder="上游模型名，如 gpt-4o" />
+        <select id="modelProvider"></select>
+        <input id="fallbackIds" placeholder="备用模型ID（逗号分隔）" />
+        <button onclick="createModel()">新增模型</button>
+        <ul id="modelList"></ul>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:20px;">
+      <h2>统一网关调用测试</h2>
+      <select id="gatewayModel"></select>
+      <textarea id="prompt" rows="4" placeholder="输入消息"></textarea>
+      <button onclick="callGateway()">调用 /v1/chat/completions</button>
+      <pre id="gatewayResult"></pre>
+    </section>
+
+    <script>
+      async function api(path, options = {}) {
+        const res = await fetch(path, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+        });
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        return await res.json();
+      }
+
+      async function refresh() {
+        const providers = await api('/api/providers');
+        const models = await api('/api/models');
+
+        document.getElementById('providerList').innerHTML = providers
+          .map(p => `<li><strong>${p.name}</strong> (${p.protocol}) - ${p.id}<br>${p.url}</li>`)
+          .join('');
+
+        document.getElementById('modelList').innerHTML = models
+          .map(m => `<li><strong>${m.name}</strong> - ${m.id}<br>provider=${m.provider_id}, upstream=${m.upstream_model}, fallback=[${m.fallback_model_ids.join(', ')}]</li>`)
+          .join('');
+
+        const providerOptions = providers.map(p => `<option value="${p.id}">${p.name} (${p.id})</option>`).join('');
+        document.getElementById('modelProvider').innerHTML = providerOptions;
+
+        const modelOptions = models.map(m => `<option value="${m.id}">${m.name} (${m.id})</option>`).join('');
+        document.getElementById('gatewayModel').innerHTML = modelOptions;
+      }
+
+      async function createProvider() {
+        try {
+          await api('/api/providers', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: document.getElementById('providerName').value,
+              url: document.getElementById('providerUrl').value,
+              api_key: document.getElementById('providerKey').value,
+              protocol: document.getElementById('providerProtocol').value,
+              timeout_seconds: 30,
+            }),
+          });
+          await refresh();
+        } catch (e) {
+          alert(e.message);
+        }
+      }
+
+      async function createModel() {
+        try {
+          const fallbackRaw = document.getElementById('fallbackIds').value.trim();
+          await api('/api/models', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: document.getElementById('modelName').value,
+              provider_id: document.getElementById('modelProvider').value,
+              upstream_model: document.getElementById('upstreamModel').value,
+              fallback_model_ids: fallbackRaw ? fallbackRaw.split(',').map(v => v.trim()) : [],
+              enabled: true,
+            }),
+          });
+          await refresh();
+        } catch (e) {
+          alert(e.message);
+        }
+      }
+
+      async function callGateway() {
+        try {
+          const response = await api('/v1/chat/completions', {
+            method: 'POST',
+            body: JSON.stringify({
+              model: document.getElementById('gatewayModel').value,
+              messages: [{ role: 'user', content: document.getElementById('prompt').value }],
+            }),
+          });
+          document.getElementById('gatewayResult').textContent = JSON.stringify(response, null, 2);
+        } catch (e) {
+          document.getElementById('gatewayResult').textContent = e.message;
+        }
+      }
+
+      refresh();
+    </script>
+  </body>
+</html>
